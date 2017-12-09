@@ -11,7 +11,6 @@ import numpy as np
 class MyException(Exception):
     pass
 
-
 def rgb2hex(rgb):
     return '#%02x%02x%02x' % rgb
 
@@ -36,10 +35,6 @@ def newNumbers(img):
     return (num1, num2)
 
 def generatePosition(numbers):
-    #field.append(-1)
-    #pos1 = 20
-    #pos2 = 20
-    #while field[pos1] != 0 and field[pos2]!=0:
     pos1 = randint(0,19)
     pos2 = (pos1 + 10) % 20
     return (pos1, pos2)
@@ -51,6 +46,9 @@ def getScore(driver):
     if score=='':
         score = 0
     return int(score)
+
+def getGameState():
+    pass
 
 
 def on_keyf8(key):
@@ -67,6 +65,10 @@ def playTutorial():
 def shotBall(newPos):
     mouse.position = BROWSERFIELDS[newPos[0]]
     mouse.click(Button.left, 2)
+
+def gameOver(field):
+    return 0 not in field
+
 
 
 key_listener = keyboard.Listener(on_release=on_keyf8)
@@ -96,46 +98,51 @@ time.sleep(2)
 
 playTutorial()
 
+GAME_OVER = False
 NumberOfMouseClicks = 1
 
 #pdb.set_trace()
 
 #columns =
 #Q = pd.DataFrame(np.zeros(), columns=range(0,20).append('state'), index=range(0,10))
-SCORE = 0
 REWARD = -1
-FIELD = [None] * 20
+LAST_SCORE = 0
+LAST_FIELD = [None] * 20
 
 def on_click(x, y, button, pressed):
+    global GAME_OVER
+    global LAST_SCORE
+    global LAST_FIELD
     global NumberOfMouseClicks
     print 'NumberOfMouseClicks: ' + str(NumberOfMouseClicks)
 
-    time.sleep(2)
-    driver.save_screenshot(save_path)
-    img = Image.open(save_path)
-    global numbers
-    numbers = newNumbers(img)
-    global FIELD
-    curr_field = getField(img)
-    global SCORE
-    curr_score = getScore(driver)
-    REWARD = curr_score - SCORE
-    print 'SCORE: ' + str(SCORE)
-    print 'REWARD: ' + str(REWARD)
-    print 'FIELD: ' + str(FIELD)
-    print 'INPUT: ' + str(numbers)
-
     if NumberOfMouseClicks%2==0:
+
+        time.sleep(2)
+        driver.save_screenshot(save_path)
+        img = Image.open(save_path)
+        DOTS = newNumbers(img)
+        FIELD = getField(img)
+
+        GAME_OVER = gameOver(FIELD)
+        if GAME_OVER:
+            raise MyException()
+
+        SCORE = getScore(driver)
+        REWARD = SCORE - LAST_SCORE
+        print 'SCORE: ' + str(SCORE)
+        print 'REWARD: ' + str(REWARD)
+        print 'FIELD: ' + str(FIELD)
+        print 'DOTS: ' + str(DOTS)
+
         #pdb.set_trace()
-        newPos = generatePosition(numbers)
+        newPos = generatePosition(DOTS)
         print 'PLACE DOTS ON: ' + str(newPos)
         shotBall(newPos)
         time.sleep(2)
-        #pdb.set_trace()
 
-
-    FIELD = curr_field
-    SCORE = curr_score
+        LAST_FIELD = FIELD
+        LAST_SCORE = SCORE
 
     NumberOfMouseClicks += 1
 
@@ -145,8 +152,10 @@ with Listener(on_click=on_click) as listener:
         print 'TRY'
         listener.join()
     except MyException as e:
-        print 'Exception'
+        print 'GAME OVER!!! :((('
         listener.stop()
+
+    pdb.set_trace()
 
 
 
