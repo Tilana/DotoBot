@@ -7,6 +7,8 @@ import time
 from random import randint
 import pandas as pd
 import numpy as np
+from Q_Net import Q_Net
+import tensorflow as tf
 
 class MyException(Exception):
     pass
@@ -34,8 +36,7 @@ def newNumbers(img):
     num2 = getNumber(img, POS2)
     return (num1, num2)
 
-def generatePosition(numbers):
-    pos1 = randint(0,19)
+def generateComplementaryPosition(pos1):
     pos2 = (pos1 + 10) % 20
     return (pos1, pos2)
 
@@ -105,57 +106,105 @@ NumberOfMouseClicks = 1
 
 #columns =
 #Q = pd.DataFrame(np.zeros(), columns=range(0,20).append('state'), index=range(0,10))
+#Q = pd.DataFrame(columns=range(0,20))
+
 REWARD = -1
 LAST_SCORE = 0
 LAST_FIELD = [None] * 20
+LAST_POS = 0
 
-def on_click(x, y, button, pressed):
-    global GAME_OVER
-    global LAST_SCORE
-    global LAST_FIELD
-    global NumberOfMouseClicks
-    print 'NumberOfMouseClicks: ' + str(NumberOfMouseClicks)
+e = 0.1
+Q_Net = Q_Net(22,20)
 
-    if NumberOfMouseClicks%2==0:
+with tf.Session() as sess:
 
-        time.sleep(2)
-        driver.save_screenshot(save_path)
-        img = Image.open(save_path)
-        DOTS = newNumbers(img)
-        FIELD = getField(img)
+    sess.run(tf.global_variables_initializer())
 
-        GAME_OVER = gameOver(FIELD)
-        if GAME_OVER:
-            raise MyException()
+    def on_click(x, y, button, pressed):
+        global GAME_OVER
+        global LAST_SCORE
+        global LAST_FIELD
+        global LAST_POS
+        global NumberOfMouseClicks
+        global Q_values
+        global LAST_STATE
+        print 'NumberOfMouseClicks: ' + str(NumberOfMouseClicks)
 
-        SCORE = getScore(driver)
-        REWARD = SCORE - LAST_SCORE
-        print 'SCORE: ' + str(SCORE)
-        print 'REWARD: ' + str(REWARD)
-        print 'FIELD: ' + str(FIELD)
-        print 'DOTS: ' + str(DOTS)
+        if NumberOfMouseClicks%2==0:
 
-        #pdb.set_trace()
-        newPos = generatePosition(DOTS)
-        print 'PLACE DOTS ON: ' + str(newPos)
-        shotBall(newPos)
-        time.sleep(2)
+            time.sleep(2)
+            driver.save_screenshot(save_path)
+            img = Image.open(save_path)
+            DOTS = newNumbers(img)
+            FIELD = getField(img)
 
-        LAST_FIELD = FIELD
-        LAST_SCORE = SCORE
+            GAME_OVER = gameOver(FIELD)
 
-    NumberOfMouseClicks += 1
+            SCORE = getScore(driver)
+            REWARD = SCORE - LAST_SCORE
+            if REWARD == 0:
+                REWARD = -400
+            if GAME_OVER:
+                REWARD = -5000
+
+            #try:
+            #    rewards = Q[str(LAST_FIELD)]
+            #except:
+            #    rewards = np.zeros(20)
+            #    rewards[LAST_POS] = REWARD
+            #Q.loc[str(LAST_FIELD)] = rewards
+
+            print 'SCORE: ' + str(SCORE)
+            print 'REWARD: ' + str(REWARD)
+            print 'FIELD: ' + str(FIELD)
+            print 'DOTS: ' + str(DOTS)
+            #print Q
+
+            state = np.array(FIELD + list(DOTS))
+
+            if NumberOfMouseClicks>2:
+                Q1 = sess.run(Q_Net.Q, feed_dict={Q_Net.inputs:state.reshape((1,-1))})
+                maxQ1 = np.max(Q1)
+                target_Q = Q_values
+                target_Q[0, LAST_POS] = REWARD + 0.99 * maxQ1
+
+                _, W1 = sess.run([Q_Net.update, Q_Net.W], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1)), Q_Net.next_Q:target_Q})
+
+            if GAME_OVER:
+                raise MyException()
 
 
-with Listener(on_click=on_click) as listener:
-    try:
-        print 'TRY'
-        listener.join()
-    except MyException as e:
-        print 'GAME OVER!!! :((('
-        listener.stop()
+            action, Q_values = sess.run([Q_Net.predict, Q_Net.Q], feed_dict={Q_Net.inputs:state.reshape((1,-1))})
 
-    pdb.set_trace()
+            if np.random.rand(1) < e:
+                print 'Random Action'
+                action[0] = randint(0,19)
+
+            #pdb.set_trace()
+
+            POS = generateComplementaryPosition(action[0])
+            print 'PLACE DOTS ON: ' + str(POS)
+            shotBall(POS)
+            time.sleep(2)
+
+            LAST_FIELD = FIELD
+            LAST_SCORE = SCORE
+            LAST_POS = POS[0]
+            LAST_STATE = state
+
+        NumberOfMouseClicks += 1
+
+
+
+    with Listener(on_click=on_click) as listener:
+        try:
+            print 'TRY'
+            listener.join()
+        except MyException as e:
+            print 'GAME OVER!!! :((('
+            listener.stop()
+
+        pdb.set_trace()
 
 
 
