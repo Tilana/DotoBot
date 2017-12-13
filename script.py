@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from PIL import Image
 from selenium import webdriver
 from pynput.mouse import Button, Listener, Controller
@@ -9,8 +11,35 @@ import pandas as pd
 import numpy as np
 from Q_Net import Q_Net
 import tensorflow as tf
+from subprocess import call
+import os
+import sys
+
+
+COLOR2NUMBER = {'#303440':-1, '#c876d6':1, '#7cc2f7':2, '#b1e07b':3, '#ffd59':4, '#ffd659':4, '#987ee6':5, '#de8a64':6, '#64debf':7, '#64debf':8}
+
+POS1= (617, 450)
+POS2 = (617, 550)
+FIELDPOS = {0:(635,285), 1:(699,295), 2:(755,321), 3:(799,365), 4:(826,421), 5:(837,485), 6:(828,548), 7:(799,601), 8:(754,647), 9:(698, 674), 10:(639,683), 11:(580,674), 12:(523, 648), 13:(474,600), 14:(444,546), 15:(435,483), 16:(446,422), 17:(474,366), 18:(517,323), 19:(573, 294)}
+BROWSERFIELDS = {0:(710,440), 1:(770,450), 2:(830,480), 3:(875,525), 4:(900,585), 5:(910,640), 6:(900,705), 7:(870,760), 8:(830,800), 9:(770,830), 10:(710,840), 11:(650,830), 12:(595,800), 13:(546,753), 14:(520,705), 15:(510,640), 16:(520,580), 17:(550,525), 18:(595,480), 19:(650,455), 'SWITCH':(490, 860)}
+
+
+mouse = Controller()
+Q_Net = Q_Net(22,20)
+
+
+GAME_OVER = False
+NumberOfMouseClicks = 1
+
+REWARD = -1
+LAST_SCORE = 0
+LAST_FIELD = [None] * 20
+LAST_POS = 0
+
+
 
 class MyException(Exception):
+    #os.execv('script.py', ['python'])
     pass
 
 def rgb2hex(rgb):
@@ -71,17 +100,8 @@ def gameOver(field):
     return 0 not in field
 
 
-
 key_listener = keyboard.Listener(on_release=on_keyf8)
 key_listener.start()
-
-
-COLOR2NUMBER = {'#303440':-1, '#c876d6':1, '#7cc2f7':2, '#b1e07b':3, '#ffd59':4, '#ffd659':4, '#987ee6':5, '#de8a64':6, '#64debf':7, '#64debf':8}
-
-POS1= (617, 450)
-POS2 = (617, 550)
-FIELDPOS = {0:(635,285), 1:(699,295), 2:(755,321), 3:(799,365), 4:(826,421), 5:(837,485), 6:(828,548), 7:(799,601), 8:(754,647), 9:(698, 674), 10:(639,683), 11:(580,674), 12:(523, 648), 13:(474,600), 14:(444,546), 15:(435,483), 16:(446,422), 17:(474,366), 18:(517,323), 19:(573, 294)}
-BROWSERFIELDS = {0:(710,440), 1:(770,450), 2:(830,480), 3:(875,525), 4:(900,585), 5:(910,640), 6:(900,705), 7:(870,760), 8:(830,800), 9:(770,830), 10:(710,840), 11:(650,830), 12:(595,800), 13:(546,753), 14:(520,705), 15:(510,640), 16:(520,580), 17:(550,525), 18:(595,480), 19:(650,455), 'SWITCH':(490, 860)}
 
 
 html_file = 'http://www.dotowheel.com'
@@ -94,31 +114,18 @@ driver.set_window_position(0,0)
 
 center = (710,640)
 
-mouse = Controller()
 time.sleep(2)
 
 playTutorial()
 
-GAME_OVER = False
-NumberOfMouseClicks = 1
-
-#pdb.set_trace()
-
-#columns =
-#Q = pd.DataFrame(np.zeros(), columns=range(0,20).append('state'), index=range(0,10))
-#Q = pd.DataFrame(columns=range(0,20))
-
-REWARD = -1
-LAST_SCORE = 0
-LAST_FIELD = [None] * 20
-LAST_POS = 0
-
 e = 0.1
-Q_Net = Q_Net(22,20)
 
 with tf.Session() as sess:
 
     sess.run(tf.global_variables_initializer())
+    saver = tf.train.Saver()
+    pretrained_model = tf.train.import_meta_graph('model/doto_model-1.meta')
+    pretrained_model.restore(sess, tf.train.latest_checkpoint('./model/'))
 
     def on_click(x, y, button, pressed):
         global GAME_OVER
@@ -142,17 +149,12 @@ with tf.Session() as sess:
 
             SCORE = getScore(driver)
             REWARD = SCORE - LAST_SCORE
-            if REWARD == 0:
+            #if REWARD == 0:
+            #    REWARD = -50
+            if LAST_FIELD == FIELD:
                 REWARD = -400
             if GAME_OVER:
-                REWARD = -5000
-
-            #try:
-            #    rewards = Q[str(LAST_FIELD)]
-            #except:
-            #    rewards = np.zeros(20)
-            #    rewards[LAST_POS] = REWARD
-            #Q.loc[str(LAST_FIELD)] = rewards
+                REWARD = -10000
 
             print 'SCORE: ' + str(SCORE)
             print 'REWARD: ' + str(REWARD)
@@ -171,7 +173,10 @@ with tf.Session() as sess:
                 _, W1 = sess.run([Q_Net.update, Q_Net.W], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1)), Q_Net.next_Q:target_Q})
 
             if GAME_OVER:
-                raise MyException()
+                saver.save(sess, 'model/doto_model', global_step=1)
+                os.execv('script.py', ['python'])
+                driver.quit()
+                #raise MyException()
 
 
             action, Q_values = sess.run([Q_Net.predict, Q_Net.Q], feed_dict={Q_Net.inputs:state.reshape((1,-1))})
@@ -205,10 +210,5 @@ with tf.Session() as sess:
             listener.stop()
 
         pdb.set_trace()
-
-
-
-driver.quit()
-
 
 
