@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 from PIL import Image
 from selenium import webdriver
 from pynput.mouse import Button, Listener, Controller
@@ -7,14 +6,10 @@ from pynput import keyboard
 import pdb
 import time
 from random import randint
-import pandas as pd
 import numpy as np
 from Q_Net import Q_Net
 import tensorflow as tf
-from subprocess import call
 import os
-import sys
-
 
 COLOR2NUMBER = {'#303440':-1, '#c876d6':1, '#7cc2f7':2, '#b1e07b':3, '#ffd59':4, '#ffd659':4, '#987ee6':5, '#de8a64':6, '#64debf':7, '#64debf':8}
 
@@ -31,11 +26,8 @@ Q_Net = Q_Net(22,20)
 GAME_OVER = False
 NumberOfMouseClicks = 1
 
-REWARD = -1
 LAST_SCORE = 0
 LAST_FIELD = [None] * 20
-LAST_POS = 0
-
 
 
 class MyException(Exception):
@@ -103,10 +95,8 @@ def gameOver(field):
 key_listener = keyboard.Listener(on_release=on_keyf8)
 key_listener.start()
 
-
 html_file = 'http://www.dotowheel.com'
 save_path = "screenshots/image001.png"
-
 
 driver = webdriver.Firefox()
 driver.get(html_file)
@@ -118,14 +108,15 @@ time.sleep(2)
 
 playTutorial()
 
-e = 0.1
+e = 0.125
 
 with tf.Session() as sess:
 
     sess.run(tf.global_variables_initializer())
     saver = tf.train.Saver()
-    pretrained_model = tf.train.import_meta_graph('model/doto_model-1.meta')
-    pretrained_model.restore(sess, tf.train.latest_checkpoint('./model/'))
+    if os.path.exists('model/doto_model-1.meta'):
+        pretrained_model = tf.train.import_meta_graph('model/doto_model-1.meta')
+        pretrained_model.restore(sess, tf.train.latest_checkpoint('./model/'))
 
     def on_click(x, y, button, pressed):
         global GAME_OVER
@@ -149,43 +140,44 @@ with tf.Session() as sess:
 
             SCORE = getScore(driver)
             REWARD = SCORE - LAST_SCORE
-            #if REWARD == 0:
-            #    REWARD = -50
+            if REWARD == 0:
+                REWARD = 0
             if LAST_FIELD == FIELD:
-                REWARD = -400
-            if GAME_OVER:
-                REWARD = -10000
+                REWARD = -1
+            if REWARD > 0:
+                REWARD = 2
 
             print 'SCORE: ' + str(SCORE)
             print 'REWARD: ' + str(REWARD)
             print 'FIELD: ' + str(FIELD)
             print 'DOTS: ' + str(DOTS)
-            #print Q
 
             state = np.array(FIELD + list(DOTS))
 
             if NumberOfMouseClicks>2:
-                Q1 = sess.run(Q_Net.Q, feed_dict={Q_Net.inputs:state.reshape((1,-1))})
-                maxQ1 = np.max(Q1)
-                target_Q = Q_values
-                target_Q[0, LAST_POS] = REWARD + 0.99 * maxQ1
+                Q1 = sess.run(Q_Net.logits, feed_dict={Q_Net.inputs:state.reshape((1,-1,1))})
 
-                _, W1 = sess.run([Q_Net.update, Q_Net.W], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1)), Q_Net.next_Q:target_Q})
+                maxQ1 = np.max(Q1)
+                target_Q = Q_values.reshape(20)
+                target_Q[LAST_POS] = REWARD + 0.99 * maxQ1
+
+                loss, _, W1 = sess.run([Q_Net.loss, Q_Net.update, Q_Net.logits], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1,1)), Q_Net.target_Q:target_Q.reshape(1,-1)})
+                print 'LOSS ' + str(loss)
 
             if GAME_OVER:
+                REWARD = -5
+                loss, _, W1 = sess.run([Q_Net.loss, Q_Net.update, Q_Net.logits], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1,1)), Q_Net.target_Q:target_Q.reshape(1,-1)})
                 saver.save(sess, 'model/doto_model', global_step=1)
+                sess.close()
                 os.execv('script.py', ['python'])
                 driver.quit()
-                #raise MyException()
 
-
-            action, Q_values = sess.run([Q_Net.predict, Q_Net.Q], feed_dict={Q_Net.inputs:state.reshape((1,-1))})
+            print 'Compute Action'
+            action, Q_values = sess.run([Q_Net.predict, Q_Net.logits], feed_dict={Q_Net.inputs:state.reshape((1,-1,1))})
 
             if np.random.rand(1) < e:
                 print 'Random Action'
                 action[0] = randint(0,19)
-
-            #pdb.set_trace()
 
             POS = generateComplementaryPosition(action[0])
             print 'PLACE DOTS ON: ' + str(POS)
@@ -196,19 +188,15 @@ with tf.Session() as sess:
             LAST_SCORE = SCORE
             LAST_POS = POS[0]
             LAST_STATE = state
+            Q_values = Q_values
 
         NumberOfMouseClicks += 1
 
-
-
     with Listener(on_click=on_click) as listener:
         try:
-            print 'TRY'
             listener.join()
         except MyException as e:
             print 'GAME OVER!!! :((('
             listener.stop()
-
-        pdb.set_trace()
 
 
