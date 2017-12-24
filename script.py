@@ -2,7 +2,7 @@
 from PIL import Image
 from selenium import webdriver
 from pynput.mouse import Button, Listener, Controller
-from pynput import keyboard
+from pynput import keyboard, mouse
 import pdb
 import time
 from random import randint
@@ -169,8 +169,8 @@ with tf.Session() as sess:
                 loss, _, W1 = sess.run([Q_Net.loss, Q_Net.update, Q_Net.logits], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1,1)), Q_Net.target_Q:target_Q.reshape(1,-1)})
                 saver.save(sess, 'model/doto_model', global_step=1)
                 sess.close()
-                os.execv('script.py', ['python'])
                 driver.quit()
+                os.execv('script.py', ['python'])
 
             print 'Compute Action'
             action, Q_values = sess.run([Q_Net.predict, Q_Net.logits], feed_dict={Q_Net.inputs:state.reshape((1,-1,1))})
@@ -192,11 +192,16 @@ with tf.Session() as sess:
 
         NumberOfMouseClicks += 1
 
-    with Listener(on_click=on_click) as listener:
-        try:
-            listener.join()
-        except MyException as e:
-            print 'GAME OVER!!! :((('
-            listener.stop()
 
+    time.sleep(5)
+
+    mouse_listener = Listener(on_click=on_click)
+    mouse_listener.start()
+
+    # Start Game
+    mouse.click(Button.left, 1)
+    time.sleep(4)
+    mouse.position = BROWSERFIELDS[2]
+    mouse.click(Button.left, 1)
+    time.sleep(6000)
 
