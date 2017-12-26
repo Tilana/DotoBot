@@ -7,6 +7,7 @@ import pdb
 import time
 from random import randint
 import numpy as np
+import pandas as pd
 from Q_Net import Q_Net
 import tensorflow as tf
 import os
@@ -22,17 +23,12 @@ BROWSERFIELDS = {0:(710,440), 1:(770,450), 2:(830,480), 3:(875,525), 4:(900,585)
 mouse = Controller()
 Q_Net = Q_Net(22,20)
 
-
 GAME_OVER = False
 NumberOfMouseClicks = 1
 
 LAST_SCORE = 0
 LAST_FIELD = [None] * 20
 
-
-class MyException(Exception):
-    #os.execv('script.py', ['python'])
-    pass
 
 def rgb2hex(rgb):
     return '#%02x%02x%02x' % rgb
@@ -61,13 +57,15 @@ def generateComplementaryPosition(pos1):
     pos2 = (pos1 + 10) % 20
     return (pos1, pos2)
 
-def getScore(driver):
+def getScores(driver):
     scores = driver.find_elements_by_xpath("//div[@class='score-value']")
     score = scores[0].text
     score = score.replace(' ','')
+    high_number = scores[2].text
+    high_number = high_number.replace(' ','')
     if score=='':
         score = 0
-    return int(score)
+    return (int(score), int(high_number))
 
 def getGameState():
     pass
@@ -98,6 +96,8 @@ key_listener.start()
 html_file = 'http://www.dotowheel.com'
 save_path = "screenshots/image001.png"
 
+infoPath = 'model/info.csv'
+
 driver = webdriver.Firefox()
 driver.get(html_file)
 driver.set_window_position(0,0)
@@ -108,7 +108,9 @@ time.sleep(2)
 
 playTutorial()
 
-e = 0.125
+e = 0.25
+info = pd.DataFrame(columns=['score', 'highest number', 'clicks'])
+memory = pd.DataFrame(columns=['state', 'action', 'reward', 'state+1', 'action+1'])
 
 with tf.Session() as sess:
 
@@ -117,6 +119,7 @@ with tf.Session() as sess:
     if os.path.exists('model/doto_model-1.meta'):
         pretrained_model = tf.train.import_meta_graph('model/doto_model-1.meta')
         pretrained_model.restore(sess, tf.train.latest_checkpoint('./model/'))
+        info = pd.read_csv(infoPath)
 
     def on_click(x, y, button, pressed):
         global GAME_OVER
@@ -126,7 +129,8 @@ with tf.Session() as sess:
         global NumberOfMouseClicks
         global Q_values
         global LAST_STATE
-        print 'NumberOfMouseClicks: ' + str(NumberOfMouseClicks)
+        global memory
+        global info
 
         if NumberOfMouseClicks%2==0:
 
@@ -138,7 +142,7 @@ with tf.Session() as sess:
 
             GAME_OVER = gameOver(FIELD)
 
-            SCORE = getScore(driver)
+            SCORE, HIGH_NUMBER = getScores(driver)
             REWARD = SCORE - LAST_SCORE
             if REWARD == 0:
                 REWARD = 0
@@ -147,24 +151,36 @@ with tf.Session() as sess:
             if REWARD > 0:
                 REWARD = 2
 
+            #pdb.set_trace()
+
             print 'SCORE: ' + str(SCORE)
             print 'REWARD: ' + str(REWARD)
+            print '\n - - - \n'
             print 'FIELD: ' + str(FIELD)
             print 'DOTS: ' + str(DOTS)
 
             state = np.array(FIELD + list(DOTS))
 
             if NumberOfMouseClicks>2:
+
                 Q1 = sess.run(Q_Net.logits, feed_dict={Q_Net.inputs:state.reshape((1,-1,1))})
 
-                maxQ1 = np.max(Q1)
+                maxInd= Q1.argmax()
+                maxQ1 = Q1[0,maxInd]
                 target_Q = Q_values.reshape(20)
                 target_Q[LAST_POS] = REWARD + 0.99 * maxQ1
 
                 loss, _, W1 = sess.run([Q_Net.loss, Q_Net.update, Q_Net.logits], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1,1)), Q_Net.target_Q:target_Q.reshape(1,-1)})
+                print 'W1: ' + str(W1)
                 print 'LOSS ' + str(loss)
 
+                experience = {'state': LAST_STATE, 'action':LAST_POS, 'reward': REWARD, 'state+1': state, 'action+1':maxInd}
+                memory.loc[len(memory)] = experience
+
             if GAME_OVER:
+                print '\n GAME OVER :((( \n'
+                info.loc[len(info)] = {'score': SCORE, 'highest number': HIGH_NUMBER, 'clicks': NumberOfMouseClicks}
+                info.to_csv(infoPath, index=False)
                 REWARD = -5
                 loss, _, W1 = sess.run([Q_Net.loss, Q_Net.update, Q_Net.logits], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1,1)), Q_Net.target_Q:target_Q.reshape(1,-1)})
                 saver.save(sess, 'model/doto_model', global_step=1)
@@ -172,7 +188,6 @@ with tf.Session() as sess:
                 driver.quit()
                 os.execv('script.py', ['python'])
 
-            print 'Compute Action'
             action, Q_values = sess.run([Q_Net.predict, Q_Net.logits], feed_dict={Q_Net.inputs:state.reshape((1,-1,1))})
 
             if np.random.rand(1) < e:
@@ -186,21 +201,21 @@ with tf.Session() as sess:
 
             LAST_FIELD = FIELD
             LAST_SCORE = SCORE
-            LAST_POS = POS[0]
+            LAST_POS = POS[1]
             LAST_STATE = state
             Q_values = Q_values
 
         NumberOfMouseClicks += 1
 
 
-    time.sleep(5)
+    time.sleep(2)
 
     mouse_listener = Listener(on_click=on_click)
     mouse_listener.start()
 
     # Start Game
     mouse.click(Button.left, 1)
-    time.sleep(4)
+    time.sleep(2)
     mouse.position = BROWSERFIELDS[2]
     mouse.click(Button.left, 1)
     time.sleep(6000)
