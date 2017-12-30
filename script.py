@@ -29,6 +29,9 @@ NumberOfMouseClicks = 1
 LAST_SCORE = 0
 LAST_FIELD = [None] * 20
 
+BATCH_SIZE = 32
+DO_UPDATE = 1
+
 
 def rgb2hex(rgb):
     return '#%02x%02x%02x' % rgb
@@ -97,6 +100,7 @@ html_file = 'http://www.dotowheel.com'
 save_path = "screenshots/image001.png"
 
 infoPath = 'model/info.csv'
+memoryPath = 'model/memory.pkl'
 
 driver = webdriver.Firefox()
 driver.get(html_file)
@@ -108,9 +112,11 @@ time.sleep(2)
 
 playTutorial()
 
-e = 0.25
+e = 0.125
 info = pd.DataFrame(columns=['score', 'highest number', 'clicks'])
-memory = pd.DataFrame(columns=['state', 'action', 'reward', 'state+1', 'action+1'])
+#memory = pd.DataFrame(columns=['state', 'action', 'reward', 'state+1', 'action+1'])
+memory = pd.read_pickle(memoryPath)
+print 'Number of samples in Memory: ' + str(len(memory))
 
 with tf.Session() as sess:
 
@@ -159,30 +165,60 @@ with tf.Session() as sess:
             print 'FIELD: ' + str(FIELD)
             print 'DOTS: ' + str(DOTS)
 
+
             state = np.array(FIELD + list(DOTS))
 
             if NumberOfMouseClicks>2:
 
                 Q1 = sess.run(Q_Net.logits, feed_dict={Q_Net.inputs:state.reshape((1,-1,1))})
-
                 maxInd= Q1.argmax()
-                maxQ1 = Q1[0,maxInd]
-                target_Q = Q_values.reshape(20)
-                target_Q[LAST_POS] = REWARD + 0.99 * maxQ1
+                #maxQ1 = Q1[0,maxInd]
+                #target_Q = Q_values.reshape(20)
+                #target_Q[LAST_POS] = REWARD + 0.99 * maxQ1
+                print Q1
 
-                loss, _, W1 = sess.run([Q_Net.loss, Q_Net.update, Q_Net.logits], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1,1)), Q_Net.target_Q:target_Q.reshape(1,-1)})
-                print 'W1: ' + str(W1)
-                print 'LOSS ' + str(loss)
-
-                experience = {'state': LAST_STATE, 'action':LAST_POS, 'reward': REWARD, 'state+1': state, 'action+1':maxInd}
+                experience = {'state': LAST_STATE, 'action': LAST_POS, 'reward': REWARD, 'state+1': state, 'action+1':maxInd}
                 memory.loc[len(memory)] = experience
+
+                #if len(memory)>BATCH_SIZE:
+                if DO_UPDATE:
+
+                    print 'BATCH UPDATE'
+
+                    #pdb.set_trace()
+
+                    sampleExperiences = memory.sample(BATCH_SIZE)
+                    sampleExperiences.loc[BATCH_SIZE] = experience
+                    previous_states = np.array(sampleExperiences['state'].tolist())
+                    current_states = np.array(sampleExperiences['state+1'].tolist())
+                    actions = sampleExperiences['action'].tolist()
+                    rewards = sampleExperiences['reward'].tolist()
+
+                    predicted_rewards = sess.run(Q_Net.expectedReward, feed_dict={Q_Net.inputs : current_states.reshape((BATCH_SIZE+1, -1, 1))})
+
+                    expected_reward = rewards + 0.99 * predicted_rewards
+
+                    _ = sess.run(Q_Net.train_op, feed_dict={Q_Net.inputs:previous_states.reshape((BATCH_SIZE+1, -1, 1)), Q_Net.actions:actions, Q_Net.target_Q:expected_reward})
+
+
+                    #print 'Update Model'
+                    #loss, _, W1 = sess.run([Q_Net.loss, Q_Net.update, Q_Net.logits], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1,1)), Q_Net.target_Q:target_Q.reshape(1,-1)})
+                    #print 'W1: ' + str(W1)
+                    #print 'LOSS ' + str(loss)
+
+
+
 
             if GAME_OVER:
                 print '\n GAME OVER :((( \n'
                 info.loc[len(info)] = {'score': SCORE, 'highest number': HIGH_NUMBER, 'clicks': NumberOfMouseClicks}
                 info.to_csv(infoPath, index=False)
                 REWARD = -5
-                loss, _, W1 = sess.run([Q_Net.loss, Q_Net.update, Q_Net.logits], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1,1)), Q_Net.target_Q:target_Q.reshape(1,-1)})
+                experience = {'state': LAST_STATE, 'action': LAST_POS, 'reward': REWARD, 'state+1': state, 'action+1':maxInd}
+                memory.loc[len(memory)] = experience
+                memory.to_pickle(memoryPath)
+                #if len(memory)>BATCH_SIZE:
+                #    loss, _, W1 = sess.run([Q_Net.loss, Q_Net.update, Q_Net.logits], feed_dict={Q_Net.inputs:LAST_STATE.reshape((1,-1,1)), Q_Net.target_Q:target_Q.reshape(1,-1)})
                 saver.save(sess, 'model/doto_model', global_step=1)
                 sess.close()
                 driver.quit()
@@ -218,5 +254,8 @@ with tf.Session() as sess:
     time.sleep(2)
     mouse.position = BROWSERFIELDS[2]
     mouse.click(Button.left, 1)
-    time.sleep(6000)
+
+    time.sleep(600)
+    #while True:
+    #    pass
 
