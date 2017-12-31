@@ -20,8 +20,10 @@ FIELDPOS = {0:(635,285), 1:(699,295), 2:(755,321), 3:(799,365), 4:(826,421), 5:(
 BROWSERFIELDS = {0:(710,440), 1:(770,450), 2:(830,480), 3:(875,525), 4:(900,585), 5:(910,640), 6:(900,705), 7:(870,760), 8:(830,800), 9:(770,830), 10:(710,840), 11:(650,830), 12:(595,800), 13:(546,753), 14:(520,705), 15:(510,640), 16:(520,580), 17:(550,525), 18:(595,480), 19:(650,455), 'SWITCH':(490, 860)}
 
 
+BATCH_SIZE = 32
+
 mouse = Controller()
-Q_Net = Q_Net(22,20)
+Q_Net = Q_Net(22,20, batch_size=BATCH_SIZE)
 
 GAME_OVER = False
 NumberOfMouseClicks = 1
@@ -29,7 +31,6 @@ NumberOfMouseClicks = 1
 LAST_SCORE = 0
 LAST_FIELD = [None] * 20
 
-BATCH_SIZE = 32
 DO_UPDATE = 1
 
 
@@ -170,12 +171,13 @@ with tf.Session() as sess:
 
             if NumberOfMouseClicks>2:
 
-                Q1 = sess.run(Q_Net.logits, feed_dict={Q_Net.inputs:state.reshape((1,-1,1))})
-                maxInd= Q1.argmax()
+                #Q1 = sess.run(Q_Net.logits, feed_dict={Q_Net.inputs:state.reshape((1,-1,1))})
+                Q1 = sess.run(Q_Net.logits, feed_dict={Q_Net.inputs:np.tile(state, [BATCH_SIZE,1]).reshape((BATCH_SIZE,-1,1))})
+                maxInd= Q1[0].argmax()
                 #maxQ1 = Q1[0,maxInd]
                 #target_Q = Q_values.reshape(20)
                 #target_Q[LAST_POS] = REWARD + 0.99 * maxQ1
-                print Q1
+                print Q1[0]
 
                 experience = {'state': LAST_STATE, 'action': LAST_POS, 'reward': REWARD, 'state+1': state, 'action+1':maxInd}
                 memory.loc[len(memory)] = experience
@@ -187,18 +189,18 @@ with tf.Session() as sess:
 
                     #pdb.set_trace()
 
-                    sampleExperiences = memory.sample(BATCH_SIZE)
+                    sampleExperiences = memory.sample(BATCH_SIZE-1)
                     sampleExperiences.loc[BATCH_SIZE] = experience
                     previous_states = np.array(sampleExperiences['state'].tolist())
                     current_states = np.array(sampleExperiences['state+1'].tolist())
                     actions = sampleExperiences['action'].tolist()
                     rewards = sampleExperiences['reward'].tolist()
 
-                    predicted_rewards = sess.run(Q_Net.expectedReward, feed_dict={Q_Net.inputs : current_states.reshape((BATCH_SIZE+1, -1, 1))})
+                    predicted_rewards = sess.run(Q_Net.expectedReward, feed_dict={Q_Net.inputs : current_states.reshape((BATCH_SIZE, -1, 1))})
 
                     expected_reward = rewards + 0.99 * predicted_rewards
 
-                    _ = sess.run(Q_Net.train_op, feed_dict={Q_Net.inputs:previous_states.reshape((BATCH_SIZE+1, -1, 1)), Q_Net.actions:actions, Q_Net.target_Q:expected_reward})
+                    _ = sess.run(Q_Net.train_op, feed_dict={Q_Net.inputs:previous_states.reshape((BATCH_SIZE, -1, 1)), Q_Net.actions:actions, Q_Net.target_Q:expected_reward})
 
 
                     #print 'Update Model'
@@ -224,7 +226,11 @@ with tf.Session() as sess:
                 driver.quit()
                 os.execv('script.py', ['python'])
 
-            action, Q_values = sess.run([Q_Net.predict, Q_Net.logits], feed_dict={Q_Net.inputs:state.reshape((1,-1,1))})
+
+            #pdb.set_trace()
+
+            action, Q_values = sess.run([Q_Net.predict, Q_Net.logits], feed_dict={Q_Net.inputs:np.tile(state, [BATCH_SIZE,1]).reshape((BATCH_SIZE,-1,1))})
+            #action = action[0]
 
             if np.random.rand(1) < e:
                 print 'Random Action'
@@ -255,7 +261,7 @@ with tf.Session() as sess:
     mouse.position = BROWSERFIELDS[2]
     mouse.click(Button.left, 1)
 
-    time.sleep(600)
-    #while True:
-    #    pass
+    #time.sleep(600)
+    while True:
+        pass
 

@@ -2,15 +2,21 @@ import tensorflow as tf
 
 class Q_Net:
 
-    def __init__(self, input_size=None, output_size=None):
+    def __init__(self, input_size=None, output_size=None, batch_size=None):
 
 
-        self.inputs = tf.placeholder(shape=[None, input_size, 1], dtype=tf.float32)
-        self.actions = tf.placeholder(shape=[None], dtype=tf.int32)
+        #if batch_size==None:
+        #    batch_size = tf.shape(self.inputs)[0]
+
+        self.inputs = tf.placeholder(shape=[batch_size, input_size, 1], dtype=tf.float32)
+
+        #batch_size = int(tf.shape(self.inputs)[0])
+        self.actions = tf.placeholder(shape=[batch_size], dtype=tf.int32)
         #self.target_Q = tf.placeholder(shape=[None, output_size], dtype=tf.float32)
-        self.target_Q = tf.placeholder(shape=[None], dtype=tf.float32)
+        self.target_Q = tf.placeholder(shape=[batch_size], dtype=tf.float32)
 
-        batch_size = tf.shape(self.inputs)[0]
+        #batch_size = tf.shape(self.inputs)[0]
+
 
         self.conv = tf.layers.conv1d(inputs=self.inputs, filters=4, kernel_size=(5), padding='same', activation=tf.nn.relu)
         self.pool1 = tf.layers.max_pooling1d(inputs=self.conv, pool_size=(2), strides=1)
@@ -19,9 +25,11 @@ class Q_Net:
         self.pool2 = tf.layers.max_pooling1d(inputs=self.conv2, pool_size=[2], strides=1)
 
         self.pool2_flat = tf.reshape(self.pool2, [-1, 20*4])
-        self.dense = tf.layers.dense(inputs=self.pool2_flat, units=30, activation=tf.nn.relu)
+        #self.dense = tf.layers.dense(inputs=self.pool2_flat, units=30, activation=tf.nn.relu)
+        self.dense = tf.contrib.layers.fully_connected(self.pool2_flat, 30) #, activation=tf.nn.relu)
 
-        self.logits = tf.layers.dense(inputs=self.dense, units=20)
+        #self.logits = tf.layers.dense(inputs=self.dense, units=20)
+        self.logits = tf.contrib.layers.fully_connected(self.dense, 20)
         self.predict = tf.argmax(self.logits, axis=1)
         self.expectedReward = tf.reduce_max(self.logits, axis=1)
 
@@ -34,7 +42,7 @@ class Q_Net:
 
         #self.optimizer = tf.train.RMSPropOptimizer(0.0025, 0.99, 0.0, 1e-6)
 
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.000001)
+        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.00001)
         self.train_op = self.optimizer.minimize(self.loss)
 
 
