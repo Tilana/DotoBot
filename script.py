@@ -20,7 +20,7 @@ FIELDPOS = {0:(635,285), 1:(699,295), 2:(755,321), 3:(799,365), 4:(826,421), 5:(
 BROWSERFIELDS = {0:(710,440), 1:(770,450), 2:(830,480), 3:(875,525), 4:(900,585), 5:(910,640), 6:(900,705), 7:(870,760), 8:(830,800), 9:(770,830), 10:(710,840), 11:(650,830), 12:(595,800), 13:(546,753), 14:(520,705), 15:(510,640), 16:(520,580), 17:(550,525), 18:(595,480), 19:(650,455), 'SWITCH':(490, 860)}
 
 
-BATCH_SIZE = 32
+BATCH_SIZE = 4
 
 mouse = Controller()
 Q_Net = Q_Net(22,20, batch_size=BATCH_SIZE)
@@ -115,11 +115,13 @@ playTutorial()
 
 e = 0.125
 info = pd.DataFrame(columns=['score', 'highest number', 'clicks'])
-#memory = pd.DataFrame(columns=['state', 'action', 'reward', 'state+1', 'action+1'])
+#memory = pd.DataFrame(columns=['state', 'action', 'reward', 'state+1', 'done'])
 memory = pd.read_pickle(memoryPath)
 print 'Number of samples in Memory: ' + str(len(memory))
 
-with tf.Session() as sess:
+sess_config = tf.ConfigProto(log_device_placement=False)
+
+with tf.Session(config=sess_config) as sess:
 
     sess.run(tf.global_variables_initializer())
     saver = tf.train.Saver()
@@ -179,7 +181,9 @@ with tf.Session() as sess:
                 #target_Q[LAST_POS] = REWARD + 0.99 * maxQ1
                 print Q1[0]
 
-                experience = {'state': LAST_STATE, 'action': LAST_POS, 'reward': REWARD, 'state+1': state, 'action+1':maxInd}
+                #pdb.set_trace()
+
+                experience = {'state': LAST_STATE, 'action': LAST_POS, 'reward': REWARD, 'state+1': state, 'done': GAME_OVER}
                 memory.loc[len(memory)] = experience
 
                 #if len(memory)>BATCH_SIZE:
@@ -191,6 +195,8 @@ with tf.Session() as sess:
 
                     sampleExperiences = memory.sample(BATCH_SIZE-1)
                     sampleExperiences.loc[BATCH_SIZE] = experience
+
+                    #pdb.set_trace()
                     previous_states = np.array(sampleExperiences['state'].tolist())
                     current_states = np.array(sampleExperiences['state+1'].tolist())
                     actions = sampleExperiences['action'].tolist()
@@ -215,8 +221,8 @@ with tf.Session() as sess:
                 print '\n GAME OVER :((( \n'
                 info.loc[len(info)] = {'score': SCORE, 'highest number': HIGH_NUMBER, 'clicks': NumberOfMouseClicks}
                 info.to_csv(infoPath, index=False)
-                REWARD = -5
-                experience = {'state': LAST_STATE, 'action': LAST_POS, 'reward': REWARD, 'state+1': state, 'action+1':maxInd}
+                #experience = {'state': LAST_STATE, 'action': LAST_POS, 'reward': REWARD, 'state+1': state, 'done':GAME_OVER}
+                experience['reward'] = -5
                 memory.loc[len(memory)] = experience
                 memory.to_pickle(memoryPath)
                 #if len(memory)>BATCH_SIZE:
