@@ -15,8 +15,7 @@ If you run out of empty space on the wheel you loose.
 Joker: Every 5th move you have the possibility to swap two dots.
 
 
-
-<iframe width="853" height="480" src="https://www.youtube.com/embed/gSXJhuXVR-M" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+[![Watch the video](https://github.com/Tilana/DotoBot/blob/master/screenshots/image002.png)](https://youtu.be/gSXJhuXVR-M)
 
 
 
